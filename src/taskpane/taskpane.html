@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>表格格式调整工具</title>
+    <script src="https://appsforoffice.microsoft.com/lib/1.1/hosted/office.js"></script>
+
+    <style>
+        body {
+            font-family: "Microsoft YaHei", sans-serif;
+            padding: 12px;
+            background: #f0f2f5;
+            font-size: 12px;
+        }
+
+        .header {
+            background: #2b579a;
+            color: white;
+            padding: 10px;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        .status {
+            padding: 6px;
+            margin: 10px 0;
+            border-radius: 4px;
+            text-align: center;
+        }
+
+        .in-table { background: #d4edda; }
+        .out-table { background: #f8d7da; }
+
+        button {
+            width: 100%;
+            padding: 8px;
+            margin-top: 6px;
+            cursor: pointer;
+        }
+
+        .section {
+            background: white;
+            padding: 10px;
+            margin-top: 10px;
+            border-radius: 6px;
+        }
+    </style>
+</head>
+
+<body>
+<div class="header">📊 表格格式工具</div>
+
+<div id="statusBox" class="status out-table">检测中...</div>
+
+<button id="btnSelectAll" disabled>🔲 全选表格</button>
+
+<div class="section">
+    <label><input type="checkbox" id="childLock" checked> 锁定配置</label>
+</div>
+
+<div class="section">
+    <button id="btnApplyCurrent">应用当前配置</button>
+    <button id="btnSavePreset">保存为预设</button>
+</div>
+
+<script src="taskpane.js"></script>
+</body>
+</html>
