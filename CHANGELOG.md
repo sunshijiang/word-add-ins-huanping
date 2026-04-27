@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, and versioning follows SemVer in project practice.
 
+## [0.0.3] - 2026-04-27
+
+### Added
+- 实现“新建标准表格并套格式”功能（支持输入行数、列数）。
+- 实现“标准化当前表格”功能（表格对齐、边框、单元格垂直居中、表内字体与段落）。
+- 实现“标准化正文段落”功能（两端对齐、首行缩进、段前后 0、1.5 倍行距）。
+- 任务窗格 UI 重构为三类核心按钮，直接对应环评报告使用场景。
+
+### Changed
+- README 新增“功能实现状态（按需求检查）”说明，并更新版本号到 0.0.3。
+
 ## [0.0.2] - 2026-04-24
 
 ### Added

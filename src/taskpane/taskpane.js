@@ -1,203 +1,268 @@
-// ============================================
-// 全局状态
-// ============================================
+/* global Office, Word, document, console, alert, setTimeout, clearTimeout */
 
 let isInTable = false;
 let isApplying = false;
 let debounceTimer = null;
 
-const DEFAULT_CONFIG = {
-    fontName: "宋体",
-    fontSize: 10.5,
-    paragraphAlign: "center",
-    lineSpacing: 15,
-    spaceBefore: 0,
-    spaceAfter: 0,
-    tableAlign: "center",
-    cellVAlign: "center"
+const TABLE_TEXT_CONFIG = {
+  fontName: "宋体",
+  westernFontName: "Times New Roman",
+  fontSize: 10.5,
+  alignment: Word.Alignment.center,
+  lineSpacing: 15,
+  spaceBefore: 0,
+  spaceAfter: 0,
+  leftIndent: 0,
+  rightIndent: 0,
+  firstLineIndent: 0,
 };
 
-const WESTERN_FONT = "Times New Roman";
-
-// ============================================
-// 初始化
-// ============================================
+const BODY_PARAGRAPH_CONFIG = {
+  alignment: Word.Alignment.justified,
+  leftIndent: 0,
+  rightIndent: 0,
+  firstLineIndent: 21,
+  spaceBefore: 0,
+  spaceAfter: 0,
+  lineSpacing: 22.5,
+};
 
 Office.onReady(() => {
-    bindUI();
-    startSelectionListener();
+  bindUI();
+  startSelectionListener();
 });
 
-// ============================================
-// UI 绑定
-// ============================================
-
 function bindUI() {
-    document.getElementById("btnSelectAll").onclick = selectWholeTable;
-    document.getElementById("btnApplyCurrent").onclick = () => applyConfig(DEFAULT_CONFIG);
+  document.getElementById("btnSelectAll").onclick = selectWholeTable;
+  document.getElementById("btnCreateTable").onclick = createStandardTable;
+  document.getElementById("btnApplyTable").onclick = applyCurrentTableStandard;
+  document.getElementById("btnApplyParagraph").onclick = applyBodyParagraphStandard;
 }
 
-// ============================================
-// 表格检测（事件驱动）
-// ============================================
-
 function startSelectionListener() {
-    Office.context.document.addHandlerAsync(
-        Office.EventType.DocumentSelectionChanged,
-        onSelectionChanged
-    );
-
-    checkIfInTable();
+  Office.context.document.addHandlerAsync(
+    Office.EventType.DocumentSelectionChanged,
+    onSelectionChanged
+  );
+  checkIfInTable();
 }
 
 function onSelectionChanged() {
-    clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(checkIfInTable, 150);
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(checkIfInTable, 150);
 }
 
 async function checkIfInTable() {
-    try {
-        await Word.run(async (context) => {
-            const table = await getCurrentTable(context);
+  try {
+    await Word.run(async (context) => {
+      const table = await getCurrentTable(context);
+      const statusBox = document.getElementById("statusBox");
+      const selectButton = document.getElementById("btnSelectAll");
+      const applyTableButton = document.getElementById("btnApplyTable");
 
-            const statusBox = document.getElementById("statusBox");
-            const btn = document.getElementById("btnSelectAll");
+      if (table) {
+        isInTable = true;
+        statusBox.textContent = "✅ 在表格中";
+        statusBox.className = "status in-table";
+      } else {
+        isInTable = false;
+        statusBox.textContent = "⚠️ 不在表格中";
+        statusBox.className = "status out-table";
+      }
 
-            if (table) {
-                isInTable = true;
-                statusBox.textContent = "✅ 在表格中";
-                statusBox.className = "status in-table";
-                btn.disabled = false;
-            } else {
-                isInTable = false;
-                statusBox.textContent = "⚠️ 不在表格中";
-                statusBox.className = "status out-table";
-                btn.disabled = true;
-            }
-        });
-    } catch (e) {
-        console.error(e);
-    }
+      selectButton.disabled = !isInTable;
+      applyTableButton.disabled = !isInTable;
+    });
+  } catch (error) {
+    console.error(error);
+  }
 }
-
-// ============================================
-// 获取当前表格（统一入口）
-// ============================================
 
 async function getCurrentTable(context) {
-    const selection = context.document.getSelection();
-    const tables = selection.tables;
+  const selection = context.document.getSelection();
+  selection.load("tables");
+  await context.sync();
 
-    tables.load("items");
-    await context.sync();
+  const tables = selection.tables;
+  tables.load("items");
+  await context.sync();
 
-    return tables.items.length > 0 ? tables.items[0] : null;
+  return tables.items.length > 0 ? tables.items[0] : null;
 }
-
-// ============================================
-// 全选表格
-// ============================================
 
 async function selectWholeTable() {
-    if (!isInTable) return;
+  if (!isInTable) {
+    return;
+  }
 
-    await Word.run(async (context) => {
-        const table = await getCurrentTable(context);
-
-        if (!table) return;
-
-        table.getRange().select();
-        await context.sync();
-    });
+  await Word.run(async (context) => {
+    const table = await getCurrentTable(context);
+    if (!table) {
+      return;
+    }
+    table.getRange().select();
+    await context.sync();
+  });
 }
 
-// ============================================
-// 应用配置（核心优化版）
-// ============================================
+function readDimension(id) {
+  const value = parseInt(document.getElementById(id).value, 10);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
 
-async function applyConfig(config) {
-    if (isApplying) return;
-    isApplying = true;
+async function runSafe(action) {
+  if (isApplying) {
+    return;
+  }
 
-    try {
-        await Word.run(async (context) => {
+  isApplying = true;
+  try {
+    await action();
+  } catch (error) {
+    console.error(error);
+    alert(`执行失败：${error.message}`);
+  }
+  isApplying = false;
+}
 
-            const table = await getCurrentTable(context);
+async function createStandardTable() {
+  const rows = readDimension("rows");
+  const cols = readDimension("cols");
 
-            if (!table) {
-                alert("请先选中表格");
-                return;
-            }
+  if (!rows || !cols) {
+    alert("请输入合法的行数和列数（大于 0 的整数）。");
+    return;
+  }
 
-            // 表格对齐
-            const alignMap = {
-                left: Word.Alignment.left,
-                center: Word.Alignment.center,
-                right: Word.Alignment.right
-            };
-            table.alignment = alignMap[config.tableAlign];
+  await runSafe(async () => {
+    await Word.run(async (context) => {
+      const selection = context.document.getSelection();
+      const values = Array.from({ length: rows }, () => Array.from({ length: cols }, () => ""));
+      const table = selection.insertTable(rows, cols, Word.InsertLocation.after, values);
 
-            // 批量加载
-            table.rows.load("items");
-            await context.sync();
+      applyTableShape(table);
+      await applyTableTextAndParagraph(context, table);
 
-            const rows = table.rows.items;
+      table.getRange().select();
+      await context.sync();
+    });
 
-            rows.forEach(r => r.cells.load("items"));
-            await context.sync();
+    await checkIfInTable();
+  });
+}
 
-            rows.forEach(r => {
-                r.cells.items.forEach(cell => {
-                    cell.body.paragraphs.load("items");
-                });
-            });
-            await context.sync();
+async function applyCurrentTableStandard() {
+  await runSafe(async () => {
+    await Word.run(async (context) => {
+      const table = await getCurrentTable(context);
+      if (!table) {
+        throw new Error("请先将光标放到目标表格中。");
+      }
 
-            // 批量应用
-            rows.forEach(row => {
-                row.cells.items.forEach(cell => {
+      applyTableShape(table);
+      await applyTableTextAndParagraph(context, table);
+      await context.sync();
+    });
+  });
+}
 
-                    const vMap = {
-                        top: Word.VerticalAlignment.top,
-                        center: Word.VerticalAlignment.center,
-                        bottom: Word.VerticalAlignment.bottom
-                    };
+function applyTableShape(table) {
+  table.alignment = Word.Alignment.center;
 
-                    cell.verticalAlignment = vMap[config.cellVAlign];
+  if (typeof table.autoFitWindow === "function") {
+    table.autoFitWindow();
+  } else if (typeof table.autoFitBehavior === "function") {
+    table.autoFitBehavior(Word.AutoFitBehaviorType.window);
+  }
 
-                    cell.body.paragraphs.items.forEach(para => {
+  setBorderIfSupported(table, Word.BorderLocation.top, 1.5, true);
+  setBorderIfSupported(table, Word.BorderLocation.bottom, 1.5, true);
+  setBorderIfSupported(table, Word.BorderLocation.left, 0, false);
+  setBorderIfSupported(table, Word.BorderLocation.right, 0, false);
+  setBorderIfSupported(table, Word.BorderLocation.insideHorizontal, 0.5, true);
+  setBorderIfSupported(table, Word.BorderLocation.insideVertical, 0.5, true);
+}
 
-                        const pMap = {
-                            left: Word.Alignment.left,
-                            center: Word.Alignment.center,
-                            right: Word.Alignment.right,
-                            justify: Word.Alignment.justified
-                        };
-
-                        para.alignment = pMap[config.paragraphAlign];
-
-                        para.lineSpacing = config.lineSpacing;
-                        para.spaceBefore = config.spaceBefore;
-                        para.spaceAfter = config.spaceAfter;
-
-                        // 字体（完整修复）
-                        para.font.name = config.fontName;
-                        para.font.nameFarEast = config.fontName;
-                        para.font.nameAscii = WESTERN_FONT;
-                        para.font.nameComplexScript = WESTERN_FONT;
-
-                        para.font.size = config.fontSize;
-                    });
-                });
-            });
-
-            await context.sync();
-        });
-
-    } catch (e) {
-        console.error("应用失败:", e);
-        alert(e.message);
+function setBorderIfSupported(table, borderLocation, width, visible) {
+  try {
+    const border = table.getBorder(borderLocation);
+    border.type = visible ? Word.BorderType.single : Word.BorderType.none;
+    border.color = "#000000";
+    if (visible) {
+      border.width = width;
     }
+  } catch (error) {
+    console.warn("当前 Word 版本不支持该边框设置：", borderLocation, error.message);
+  }
+}
 
-    isApplying = false;
+async function applyTableTextAndParagraph(context, table) {
+  table.rows.load("items");
+  await context.sync();
+
+  table.rows.items.forEach((row) => {
+    row.height = 0;
+    row.cells.load("items");
+  });
+  await context.sync();
+
+  table.rows.items.forEach((row) => {
+    row.cells.items.forEach((cell) => {
+      cell.verticalAlignment = Word.VerticalAlignment.center;
+      cell.width = 0;
+      cell.body.paragraphs.load("items");
+    });
+  });
+  await context.sync();
+
+  table.rows.items.forEach((row) => {
+    row.cells.items.forEach((cell) => {
+      cell.body.paragraphs.items.forEach((paragraph) => {
+        paragraph.alignment = TABLE_TEXT_CONFIG.alignment;
+        paragraph.spaceBefore = TABLE_TEXT_CONFIG.spaceBefore;
+        paragraph.spaceAfter = TABLE_TEXT_CONFIG.spaceAfter;
+        paragraph.lineSpacing = TABLE_TEXT_CONFIG.lineSpacing;
+        paragraph.leftIndent = TABLE_TEXT_CONFIG.leftIndent;
+        paragraph.rightIndent = TABLE_TEXT_CONFIG.rightIndent;
+        paragraph.firstLineIndent = TABLE_TEXT_CONFIG.firstLineIndent;
+
+        paragraph.font.name = TABLE_TEXT_CONFIG.fontName;
+        paragraph.font.nameFarEast = TABLE_TEXT_CONFIG.fontName;
+        paragraph.font.nameAscii = TABLE_TEXT_CONFIG.westernFontName;
+        paragraph.font.nameOther = TABLE_TEXT_CONFIG.westernFontName;
+        paragraph.font.nameComplexScript = TABLE_TEXT_CONFIG.westernFontName;
+        paragraph.font.size = TABLE_TEXT_CONFIG.fontSize;
+      });
+    });
+  });
+}
+
+async function applyBodyParagraphStandard() {
+  await runSafe(async () => {
+    await Word.run(async (context) => {
+      const selection = context.document.getSelection();
+      selection.load("paragraphs");
+      await context.sync();
+
+      const paragraphs = selection.paragraphs;
+      paragraphs.load("items");
+      await context.sync();
+
+      if (!paragraphs.items.length) {
+        throw new Error("未找到可设置的段落，请先选中正文内容。");
+      }
+
+      paragraphs.items.forEach((paragraph) => {
+        paragraph.alignment = BODY_PARAGRAPH_CONFIG.alignment;
+        paragraph.leftIndent = BODY_PARAGRAPH_CONFIG.leftIndent;
+        paragraph.rightIndent = BODY_PARAGRAPH_CONFIG.rightIndent;
+        paragraph.firstLineIndent = BODY_PARAGRAPH_CONFIG.firstLineIndent;
+        paragraph.spaceBefore = BODY_PARAGRAPH_CONFIG.spaceBefore;
+        paragraph.spaceAfter = BODY_PARAGRAPH_CONFIG.spaceAfter;
+        paragraph.lineSpacing = BODY_PARAGRAPH_CONFIG.lineSpacing;
+      });
+
+      await context.sync();
+    });
+  });
 }
