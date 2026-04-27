@@ -1,68 +1,130 @@
 <!DOCTYPE html>
 <html>
-<head>
-    <meta charset="UTF-8">
-    <title>表格格式调整工具</title>
+  <head>
+    <meta charset="UTF-8" />
+    <title>环评报告格式助手</title>
     <script src="https://appsforoffice.microsoft.com/lib/1.1/hosted/office.js"></script>
 
     <style>
-        body {
-            font-family: "Microsoft YaHei", sans-serif;
-            padding: 12px;
-            background: #f0f2f5;
-            font-size: 12px;
-        }
+      body {
+        font-family: "Microsoft YaHei", sans-serif;
+        padding: 12px;
+        background: #f0f2f5;
+        font-size: 12px;
+      }
 
-        .header {
-            background: #2b579a;
-            color: white;
-            padding: 10px;
-            text-align: center;
-            font-weight: bold;
-        }
+      .header {
+        background: #2b579a;
+        color: white;
+        padding: 10px;
+        text-align: center;
+        font-weight: bold;
+      }
 
-        .status {
-            padding: 6px;
-            margin: 10px 0;
-            border-radius: 4px;
-            text-align: center;
-        }
+      .status {
+        padding: 6px;
+        margin: 10px 0;
+        border-radius: 4px;
+        text-align: center;
+      }
 
-        .in-table { background: #d4edda; }
-        .out-table { background: #f8d7da; }
+      .in-table {
+        background: #d4edda;
+      }
+      .out-table {
+        background: #f8d7da;
+      }
 
-        button {
-            width: 100%;
-            padding: 8px;
-            margin-top: 6px;
-            cursor: pointer;
-        }
+      .section {
+        background: white;
+        padding: 10px;
+        margin-top: 10px;
+        border-radius: 6px;
+      }
 
-        .section {
-            background: white;
-            padding: 10px;
-            margin-top: 10px;
-            border-radius: 6px;
-        }
+      .section-title {
+        font-weight: 700;
+        margin-bottom: 8px;
+      }
+
+      .row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+
+      .row label {
+        min-width: 36px;
+      }
+
+      input[type="number"] {
+        width: 100%;
+        padding: 6px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+      }
+
+      button {
+        width: 100%;
+        padding: 8px;
+        margin-top: 6px;
+        cursor: pointer;
+        border: none;
+        border-radius: 4px;
+      }
+
+      .btn-primary {
+        background: #2b579a;
+        color: white;
+      }
+
+      .btn-secondary {
+        background: #e9ecef;
+      }
+
+      .hint {
+        color: #666;
+        line-height: 1.5;
+      }
     </style>
-</head>
+  </head>
 
-<body>
-<div class="header">📊 表格格式工具</div>
+  <body>
+    <div class="header">📘 环评报告格式助手</div>
 
-<div id="statusBox" class="status out-table">检测中...</div>
+    <div id="statusBox" class="status out-table">检测中...</div>
 
-<button id="btnSelectAll" disabled>🔲 全选表格</button>
+    <div class="section">
+      <div class="section-title">1) 新建标准表格</div>
+      <div class="row">
+        <label for="rows">行数</label>
+        <input id="rows" type="number" min="1" value="3" />
+      </div>
+      <div class="row" style="margin-top: 6px">
+        <label for="cols">列数</label>
+        <input id="cols" type="number" min="1" value="3" />
+      </div>
+      <button id="btnCreateTable" class="btn-primary">新建标准表格并套用格式</button>
+    </div>
 
-<div class="section">
-    <label><input type="checkbox" id="childLock" checked> 锁定配置</label>
-</div>
+    <div class="section">
+      <div class="section-title">2) 标准化当前表格</div>
+      <button id="btnSelectAll" class="btn-secondary" disabled>全选当前表格</button>
+      <button id="btnApplyTable" class="btn-primary" disabled>应用表格标准格式</button>
+    </div>
 
-<div class="section">
-    <button id="btnApplyCurrent">应用当前配置</button>
-    <button id="btnSavePreset">保存为预设</button>
-</div>
+    <div class="section">
+      <div class="section-title">3) 标准化正文段落</div>
+      <button id="btnApplyParagraph" class="btn-primary">应用正文段落格式</button>
+    </div>
 
-<script src="taskpane.js"></script>
-</body>
+    <div class="section hint">
+      规范摘要：
+      <br />• 表格：宽度 100%、居中、上下 1.5 磅边框、内部 0.5 磅。
+      <br />• 表内文字：宋体/Times New Roman 五号，居中，单倍行距。
+      <br />• 正文段落：两端对齐，首行缩进 2 字符，1.5 倍行距。
+    </div>
+
+    <script src="taskpane.js"></script>
+  </body>
 </html>

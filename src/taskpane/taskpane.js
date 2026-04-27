@@ -1,203 +1,323 @@
-// ============================================
-// 全局状态
-// ============================================
+/* global Office, Word, document, console, alert, setTimeout, clearTimeout */
 
 let isInTable = false;
 let isApplying = false;
 let debounceTimer = null;
 
-const DEFAULT_CONFIG = {
-    fontName: "宋体",
-    fontSize: 10.5,
-    paragraphAlign: "center",
-    lineSpacing: 15,
-    spaceBefore: 0,
-    spaceAfter: 0,
-    tableAlign: "center",
-    cellVAlign: "center"
+const TABLE_TEXT_CONFIG = {
+  fontName: "宋体",
+  westernFontName: "Times New Roman",
+  fontSize: 10.5,
+  alignment: Word.Alignment.center,
+  lineSpacing: 15,
+  spaceBefore: 0,
+  spaceAfter: 0,
+  leftIndent: 0,
+  rightIndent: 0,
+  firstLineIndent: 0,
 };
 
-const WESTERN_FONT = "Times New Roman";
-
-// ============================================
-// 初始化
-// ============================================
+const BODY_PARAGRAPH_CONFIG = {
+  alignment: Word.Alignment.justified,
+  leftIndent: 0,
+  rightIndent: 0,
+  firstLineIndent: 21,
+  spaceBefore: 0,
+  spaceAfter: 0,
+  lineSpacing: 22.5,
+};
 
 Office.onReady(() => {
-    bindUI();
-    startSelectionListener();
+  bindUI();
+  startSelectionListener();
 });
 
-// ============================================
-// UI 绑定
-// ============================================
-
 function bindUI() {
-    document.getElementById("btnSelectAll").onclick = selectWholeTable;
-    document.getElementById("btnApplyCurrent").onclick = () => applyConfig(DEFAULT_CONFIG);
+  document.getElementById("btnSelectAll").onclick = selectWholeTable;
+  document.getElementById("btnCreateTable").onclick = createStandardTable;
+  document.getElementById("btnApplyTable").onclick = applyCurrentTableStandard;
+  document.getElementById("btnApplyParagraph").onclick = applyBodyParagraphStandard;
 }
 
-// ============================================
-// 表格检测（事件驱动）
-// ============================================
-
 function startSelectionListener() {
-    Office.context.document.addHandlerAsync(
-        Office.EventType.DocumentSelectionChanged,
-        onSelectionChanged
-    );
-
-    checkIfInTable();
+  Office.context.document.addHandlerAsync(
+    Office.EventType.DocumentSelectionChanged,
+    onSelectionChanged
+  );
+  checkIfInTable();
 }
 
 function onSelectionChanged() {
-    clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(checkIfInTable, 150);
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(checkIfInTable, 120);
 }
 
 async function checkIfInTable() {
-    try {
-        await Word.run(async (context) => {
-            const table = await getCurrentTable(context);
+  try {
+    await Word.run(async (context) => {
+      const table = await getCurrentTable(context);
+      const statusBox = document.getElementById("statusBox");
+      const selectButton = document.getElementById("btnSelectAll");
+      const applyTableButton = document.getElementById("btnApplyTable");
 
-            const statusBox = document.getElementById("statusBox");
-            const btn = document.getElementById("btnSelectAll");
+      if (table) {
+        isInTable = true;
+        statusBox.textContent = "✅ 在表格中";
+        statusBox.className = "status in-table";
+      } else {
+        isInTable = false;
+        statusBox.textContent = "⚠️ 不在表格中";
+        statusBox.className = "status out-table";
+      }
 
-            if (table) {
-                isInTable = true;
-                statusBox.textContent = "✅ 在表格中";
-                statusBox.className = "status in-table";
-                btn.disabled = false;
-            } else {
-                isInTable = false;
-                statusBox.textContent = "⚠️ 不在表格中";
-                statusBox.className = "status out-table";
-                btn.disabled = true;
-            }
-        });
-    } catch (e) {
-        console.error(e);
-    }
+      selectButton.disabled = !isInTable;
+      applyTableButton.disabled = !isInTable;
+    });
+  } catch (error) {
+    console.error("检测表格状态失败：", error);
+  }
 }
-
-// ============================================
-// 获取当前表格（统一入口）
-// ============================================
 
 async function getCurrentTable(context) {
-    const selection = context.document.getSelection();
-    const tables = selection.tables;
+  const selection = context.document.getSelection();
 
+  // 优先使用 parentTableOrNullObject，可覆盖“光标在单元格内但未选中整表”的场景。
+  selection.load("parentTableOrNullObject");
+  await context.sync();
+
+  if (selection.parentTableOrNullObject) {
+    const parentTable = selection.parentTableOrNullObject;
+    parentTable.load("isNullObject");
+    await context.sync();
+    if (!parentTable.isNullObject) {
+      return parentTable;
+    }
+  }
+
+  // 兼容路径：如果上面不可用，再回退到 selection.tables。
+  try {
+    selection.load("tables");
+    await context.sync();
+    const tables = selection.tables;
     tables.load("items");
     await context.sync();
-
     return tables.items.length > 0 ? tables.items[0] : null;
+  } catch (error) {
+    console.warn("回退读取 selection.tables 失败：", error.message);
+    return null;
+  }
 }
-
-// ============================================
-// 全选表格
-// ============================================
 
 async function selectWholeTable() {
-    if (!isInTable) return;
+  if (!isInTable) {
+    await checkIfInTable();
+  }
 
+  await runSafe(async () => {
     await Word.run(async (context) => {
-        const table = await getCurrentTable(context);
+      const table = await getCurrentTable(context);
+      if (!table) {
+        throw new Error("请先将光标放到表格任意单元格。");
+      }
 
-        if (!table) return;
-
+      if (typeof table.select === "function") {
+        table.select();
+      } else {
         table.getRange().select();
-        await context.sync();
+      }
+
+      await context.sync();
     });
+
+    await checkIfInTable();
+  });
 }
 
-// ============================================
-// 应用配置（核心优化版）
-// ============================================
+function readDimension(id) {
+  const value = parseInt(document.getElementById(id).value, 10);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
 
-async function applyConfig(config) {
-    if (isApplying) return;
-    isApplying = true;
+async function runSafe(action) {
+  if (isApplying) {
+    return;
+  }
 
-    try {
-        await Word.run(async (context) => {
+  isApplying = true;
+  try {
+    await action();
+  } catch (error) {
+    console.error(error);
+    alert(`执行失败：${error.message}`);
+  }
+  isApplying = false;
+}
 
-            const table = await getCurrentTable(context);
+async function safeSync(context, stage) {
+  try {
+    await context.sync();
+    return true;
+  } catch (error) {
+    console.warn(`${stage} 失败，已自动降级：`, error.message);
+    return false;
+  }
+}
 
-            if (!table) {
-                alert("请先选中表格");
-                return;
-            }
+async function createStandardTable() {
+  const rows = readDimension("rows");
+  const cols = readDimension("cols");
 
-            // 表格对齐
-            const alignMap = {
-                left: Word.Alignment.left,
-                center: Word.Alignment.center,
-                right: Word.Alignment.right
-            };
-            table.alignment = alignMap[config.tableAlign];
+  if (!rows || !cols) {
+    alert("请输入合法的行数和列数（大于 0 的整数）。");
+    return;
+  }
 
-            // 批量加载
-            table.rows.load("items");
-            await context.sync();
+  await runSafe(async () => {
+    await Word.run(async (context) => {
+      const selection = context.document.getSelection();
+      const values = Array.from({ length: rows }, () => Array.from({ length: cols }, () => ""));
 
-            const rows = table.rows.items;
+      // 优先 Replace，避免部分环境下 After 在光标位置失效。
+      const table = selection.insertTable(rows, cols, Word.InsertLocation.replace, values);
 
-            rows.forEach(r => r.cells.load("items"));
-            await context.sync();
+      // 先确保“创建动作”提交，后续格式失败也不影响创建结果。
+      await context.sync();
 
-            rows.forEach(r => {
-                r.cells.items.forEach(cell => {
-                    cell.body.paragraphs.load("items");
-                });
-            });
-            await context.sync();
+      await applyTableShape(context, table);
+      await applyTableTextAndParagraph(context, table);
 
-            // 批量应用
-            rows.forEach(row => {
-                row.cells.items.forEach(cell => {
+      if (typeof table.select === "function") {
+        table.select();
+      } else {
+        table.getRange().select();
+      }
+      await safeSync(context, "选中新建表格");
+    });
 
-                    const vMap = {
-                        top: Word.VerticalAlignment.top,
-                        center: Word.VerticalAlignment.center,
-                        bottom: Word.VerticalAlignment.bottom
-                    };
+    await checkIfInTable();
+  });
+}
 
-                    cell.verticalAlignment = vMap[config.cellVAlign];
+async function applyCurrentTableStandard() {
+  await runSafe(async () => {
+    await Word.run(async (context) => {
+      const table = await getCurrentTable(context);
+      if (!table) {
+        throw new Error("请先将光标放到目标表格中。");
+      }
 
-                    cell.body.paragraphs.items.forEach(para => {
+      await applyTableShape(context, table);
+      await applyTableTextAndParagraph(context, table);
+    });
+  });
+}
 
-                        const pMap = {
-                            left: Word.Alignment.left,
-                            center: Word.Alignment.center,
-                            right: Word.Alignment.right,
-                            justify: Word.Alignment.justified
-                        };
+async function applyTableShape(context, table) {
+  table.alignment = Word.Alignment.center;
+  if (typeof table.autoFitWindow === "function") {
+    table.autoFitWindow();
+  } else if (typeof table.autoFitBehavior === "function") {
+    table.autoFitBehavior(Word.AutoFitBehaviorType.window);
+  }
+  await safeSync(context, "应用表格宽度/对齐");
 
-                        para.alignment = pMap[config.paragraphAlign];
+  // 边框设置按组提交，某一组失败不影响其他组。
+  applyBorderSafely(table, Word.BorderLocation.left, 0, false);
+  applyBorderSafely(table, Word.BorderLocation.right, 0, false);
+  await safeSync(context, "应用左右边框");
 
-                        para.lineSpacing = config.lineSpacing;
-                        para.spaceBefore = config.spaceBefore;
-                        para.spaceAfter = config.spaceAfter;
+  applyBorderSafely(table, Word.BorderLocation.top, 1.5, true);
+  applyBorderSafely(table, Word.BorderLocation.bottom, 1.5, true);
+  await safeSync(context, "应用上下边框");
 
-                        // 字体（完整修复）
-                        para.font.name = config.fontName;
-                        para.font.nameFarEast = config.fontName;
-                        para.font.nameAscii = WESTERN_FONT;
-                        para.font.nameComplexScript = WESTERN_FONT;
+  applyBorderSafely(table, Word.BorderLocation.insideHorizontal, 0.5, true);
+  applyBorderSafely(table, Word.BorderLocation.insideVertical, 0.5, true);
+  await safeSync(context, "应用内部边框");
+}
 
-                        para.font.size = config.fontSize;
-                    });
-                });
-            });
-
-            await context.sync();
-        });
-
-    } catch (e) {
-        console.error("应用失败:", e);
-        alert(e.message);
+function applyBorderSafely(table, borderLocation, width, visible) {
+  try {
+    const border = table.getBorder(borderLocation);
+    border.type = visible ? Word.BorderType.single : Word.BorderType.none;
+    border.color = "#000000";
+    if (visible) {
+      border.width = width;
     }
+  } catch (error) {
+    console.warn("边框对象不可用：", borderLocation, error.message);
+  }
+}
 
-    isApplying = false;
+async function applyTableTextAndParagraph(context, table) {
+  table.rows.load("items");
+  if (!(await safeSync(context, "加载表格行"))) {
+    return;
+  }
+
+  table.rows.items.forEach((row) => row.cells.load("items"));
+  if (!(await safeSync(context, "加载单元格"))) {
+    return;
+  }
+
+  table.rows.items.forEach((row) => {
+    row.cells.items.forEach((cell) => {
+      cell.verticalAlignment = Word.VerticalAlignment.center;
+      cell.body.paragraphs.load("items");
+    });
+  });
+  if (!(await safeSync(context, "加载单元格段落"))) {
+    return;
+  }
+
+  table.rows.items.forEach((row) => {
+    row.cells.items.forEach((cell) => {
+      cell.body.paragraphs.items.forEach((paragraph) => {
+        paragraph.alignment = TABLE_TEXT_CONFIG.alignment;
+        paragraph.spaceBefore = TABLE_TEXT_CONFIG.spaceBefore;
+        paragraph.spaceAfter = TABLE_TEXT_CONFIG.spaceAfter;
+        paragraph.lineSpacing = TABLE_TEXT_CONFIG.lineSpacing;
+        paragraph.leftIndent = TABLE_TEXT_CONFIG.leftIndent;
+        paragraph.rightIndent = TABLE_TEXT_CONFIG.rightIndent;
+        paragraph.firstLineIndent = TABLE_TEXT_CONFIG.firstLineIndent;
+
+        paragraph.font.name = TABLE_TEXT_CONFIG.fontName;
+        paragraph.font.nameFarEast = TABLE_TEXT_CONFIG.fontName;
+        paragraph.font.nameAscii = TABLE_TEXT_CONFIG.westernFontName;
+        paragraph.font.nameComplexScript = TABLE_TEXT_CONFIG.westernFontName;
+        paragraph.font.size = TABLE_TEXT_CONFIG.fontSize;
+      });
+    });
+  });
+
+  await safeSync(context, "应用表内字体与段落");
+}
+
+async function applyBodyParagraphStandard() {
+  await runSafe(async () => {
+    await Word.run(async (context) => {
+      const selection = context.document.getSelection();
+      selection.load("paragraphs");
+      await context.sync();
+
+      const paragraphs = selection.paragraphs;
+      paragraphs.load("items");
+      await context.sync();
+
+      if (!paragraphs.items.length) {
+        throw new Error("未找到可设置的段落，请先选中正文内容。");
+      }
+
+      paragraphs.items.forEach((paragraph) => {
+        paragraph.alignment = BODY_PARAGRAPH_CONFIG.alignment;
+        paragraph.leftIndent = BODY_PARAGRAPH_CONFIG.leftIndent;
+        paragraph.rightIndent = BODY_PARAGRAPH_CONFIG.rightIndent;
+        paragraph.firstLineIndent = BODY_PARAGRAPH_CONFIG.firstLineIndent;
+        paragraph.spaceBefore = BODY_PARAGRAPH_CONFIG.spaceBefore;
+        paragraph.spaceAfter = BODY_PARAGRAPH_CONFIG.spaceAfter;
+        paragraph.lineSpacing = BODY_PARAGRAPH_CONFIG.lineSpacing;
+      });
+
+      await context.sync();
+    });
+  });
 }
